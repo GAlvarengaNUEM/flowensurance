@@ -1,0 +1,137 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import odeint
+
+# Parâmetros físicos e condições iniciais
+diametro = 0.0254  # Diâmetro interno do tubo (1 polegada em metros)
+area = np.pi * (diametro/2)**2  # Área transversal do tubo
+comprimento_tubo = 10.0  # Comprimento total do tubo em metros
+temperatura = 27 + 273.15  # Temperatura em Kelvin
+pressao_saida = 101325  # Pressão de saída (Pa, atmosférica)
+
+# Propriedades dos fluidos a 27°C
+densidade_agua = 997  # kg/m³
+viscosidade_agua = 0.00089  # Pa.s
+densidade_ar = 1.18  # kg/m³
+viscosidade_ar = 1.85e-5  # Pa.s
+tensao_superficial = 0.072  # N/m (água-ar)
+
+# Vazões iniciais (valores estimados)
+vazao_liquido = 0.0005  # m³/s (500 ml/s)
+vazao_gas = 0.0001  # m³/s (100 ml/s)
+
+# Velocidades superficiais
+j_L = vazao_liquido / area
+j_G = vazao_gas / area
+U_mistura = j_L + j_G
+
+# Parâmetros iniciais para as bolhas
+num_bolhas = 5  # Número inicial de bolhas
+frequencia = 2.0  # Hz (frequência de formação das bolhas)
+
+# Distribuição inicial das bolhas ao longo do tubo
+posicoes_bolhas = np.linspace(0, comprimento_tubo, num_bolhas+2)[1:-1]
+comprimentos_bolhas = np.ones(num_bolhas) * 0.2  # Comprimento inicial de 20 cm
+fracoes_vazio = np.ones(num_bolhas) * 0.8  # Fração de vazio inicial de 80%
+
+# Pressões iniciais (linear da entrada à saída)
+pressoes_bolhas = np.linspace(1.2*pressao_saida, pressao_saida, num_bolhas)
+
+# Fator de atrito (estimado)
+fator_atrito = 0.02
+
+def modelo_escoamento(y, t):
+    """Função que implementa as equações do modelo de slug tracking"""
+    # Desempacota as variáveis de estado
+    # y contém: posições das bolhas, comprimentos das bolhas, pressões, velocidades
+    
+    # Aqui implementaríamos as equações (1) e (2) do artigo
+    # Esta é uma versão simplificada para demonstração
+    
+    # Derivadas temporais (simplificado)
+    dpos_dt = np.zeros(num_bolhas)
+    dL_dt = np.zeros(num_bolhas)
+    dp_dt = np.zeros(num_bolhas)
+    dU_dt = np.zeros(num_bolhas)
+    
+    for i in range(num_bolhas):
+        # Velocidade da bolha (simplificado)
+        dpos_dt[i] = U_mistura
+        
+        # Variação do comprimento (expansão do gás com a pressão)
+        dL_dt[i] = 0.01 * (pressao_saida - y[2*num_bolhas + i]) / pressao_saida
+        
+        # Variação de pressão (simplificado)
+        if i < num_bolhas - 1:
+            dp_dt[i] = -0.1 * (y[2*num_bolhas + i] - y[2*num_bolhas + i+1])
+        else:
+            dp_dt[i] = -0.1 * (y[2*num_bolhas + i] - pressao_saida)
+        
+        # Variação de velocidade (simplificado)
+        dU_dt[i] = 0.05 * (U_mistura - y[3*num_bolhas + i])
+    
+    return np.concatenate([dpos_dt, dL_dt, dp_dt, dU_dt])
+
+# Tempo de simulação
+t = np.linspace(0, 10, 100)  # 10 segundos de simulação
+
+# Condições iniciais
+y0 = np.concatenate([
+    posicoes_bolhas, 
+    comprimentos_bolhas, 
+    pressoes_bolhas, 
+    np.ones(num_bolhas) * U_mistura
+])
+
+# Resolver as equações diferenciais
+sol = odeint(modelo_escoamento, y0, t)
+
+# Processar resultados
+posicoes = sol[:, :num_bolhas]
+comprimentos = sol[:, num_bolhas:2*num_bolhas]
+pressoes = sol[:, 2*num_bolhas:3*num_bolhas]
+velocidades = sol[:, 3*num_bolhas:4*num_bolhas]
+
+# Plotar resultados
+plt.figure(figsize=(15, 10))
+
+# Pressão na primeira bolha (entrada)
+plt.subplot(2, 2, 1)
+plt.plot(t, pressoes[:, 0]/1e5, 'b-')
+plt.xlabel('Tempo (s)')
+plt.ylabel('Pressão (bar)')
+plt.title('Variação de Pressão na Entrada')
+plt.grid(True)
+
+# Pressão ao longo do tubo no último instante
+plt.subplot(2, 2, 2)
+plt.plot(posicoes[-1, :], pressoes[-1, :]/1e5, 'ro-')
+plt.xlabel('Posição no Tubo (m)')
+plt.ylabel('Pressão (bar)')
+plt.title('Distribuição de Pressão ao Longo do Tubo')
+plt.grid(True)
+
+# Evolução do comprimento das bolhas
+plt.subplot(2, 2, 3)
+for i in range(num_bolhas):
+    plt.plot(t, comprimentos[:, i], label=f'Bolha {i+1}')
+plt.xlabel('Tempo (s)')
+plt.ylabel('Comprimento (m)')
+plt.title('Evolução do Comprimento das Bolhas')
+plt.legend()
+plt.grid(True)
+
+# Visualização esquemática das bolhas no último instante
+plt.subplot(2, 2, 4)
+for i in range(num_bolhas):
+    plt.plot([posicoes[-1, i], posicoes[-1, i] + comprimentos[-1, i]], [1, 1], 'b-', linewidth=10)
+    plt.text(posicoes[-1, i] + comprimentos[-1, i]/2, 1.1, f'P={pressoes[-1, i]/1e5:.1f} bar', ha='center')
+plt.plot([0, comprimento_tubo], [0.9, 0.9], 'k-', linewidth=2)
+plt.ylim(0.5, 1.5)
+plt.xlabel('Posição no Tubo (m)')
+plt.title('Distribuição das Bolhas no Tubo')
+plt.yticks([])
+plt.grid(True)
+
+plt.tight_layout()
+plt.show()
